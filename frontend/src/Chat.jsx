@@ -1,84 +1,179 @@
-import { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import axios from "axios";
+import { Mic, Send, Plus } from "lucide-react";
 
 export default function Chat() {
-  const [messages, setMessages] = useState([]);
+  const [chats, setChats] = useState([{ id: 1, title: "New Chat", messages: [] }]);
+  const [activeChat, setActiveChat] = useState(1);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const chatEndRef = useRef(null);
 
-  const sendMessage = async () => {
-    if (!input.trim()) return;
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chats, isTyping]);
 
-    const newMessages = [...messages, { role: "user", text: input }];
-    setMessages(newMessages);
+  const addMessage = (text, sender) => {
+    setChats((prev) =>
+      prev.map((c) =>
+        c.id === activeChat
+          ? {
+              ...c,
+              messages: [
+                ...c.messages,
+                {
+                  sender,
+                  text,
+                  time: new Date().toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }),
+                },
+              ],
+            }
+          : c
+      )
+    );
+  };
+
+  const sendMessage = async (customInput) => {
+    const message = customInput || input;
+    if (!message.trim()) return;
+
+    addMessage(message, "user");
     setInput("");
-    setLoading(true);
+    setIsTyping(true);
 
     try {
-      const res = await fetch("http://localhost:5000/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: input }),
+      const res = await axios.post("http://localhost:5000/api/chat", {
+        question: message,
       });
-      const data = await res.json();
 
-      setMessages([
-        ...newMessages,
-        { role: "assistant", text: data.reply },
-      ]);
+      addMessage(res.data.reply || "⚠️ No answer found.", "bot");
     } catch (err) {
-      console.error("Error sending message:", err);
+      console.error("Error:", err);
+      addMessage("⚠️ Error connecting to backend.", "bot");
     } finally {
-      setLoading(false);
+      setIsTyping(false);
     }
   };
 
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  const newChat = () => {
+    const newId = chats.length + 1;
+    setChats([...chats, { id: newId, title: "New Chat", messages: [] }]);
+    setActiveChat(newId);
+  };
+
   return (
-    <div className="flex flex-col h-screen">
-      {/* Chat area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-100 dark:bg-gray-900">
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
+    <div className="flex h-screen bg-gray-900 text-white">
+      {/* Sidebar */}
+      <div className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
+        <div className="p-4 font-bold text-lg flex items-center justify-between text-blue-400">
+          <span>Medvarsity AI</span>
+          <button
+            onClick={newChat}
+            className="bg-blue-600 hover:bg-blue-700 p-1 rounded-full"
           >
-            <div
-              className={`p-3 max-w-md rounded-2xl shadow ${
-                m.role === "user"
-                  ? "bg-blue-600 text-white rounded-br-none"
-                  : "bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-bl-none"
+            <Plus size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-2 space-y-2">
+          {chats.map((chat) => (
+            <button
+              key={chat.id}
+              onClick={() => setActiveChat(chat.id)}
+              className={`w-full text-left px-3 py-2 rounded-lg transition ${
+                activeChat === chat.id
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-700 hover:bg-gray-600"
               }`}
             >
-              {m.text}
-            </div>
-          </div>
-        ))}
-
-        {loading && (
-          <div className="flex justify-start">
-            <div className="p-3 bg-gray-300 dark:bg-gray-700 rounded-2xl rounded-bl-none shadow">
-              Typing...
-            </div>
-          </div>
-        )}
+              {chat.title}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* Input bar */}
-      <div className="p-4 border-t dark:border-gray-700 bg-white dark:bg-gray-800 flex">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Type your message..."
-          className="flex-1 p-3 rounded-xl border dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-        />
-        <button
-          onClick={sendMessage}
-          className="ml-3 px-5 py-2 bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700"
-        >
-          Send
-        </button>
+      {/* Main Chat Window */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="border-b border-gray-700 p-4 flex justify-center bg-gray-850">
+          <h1 className="text-xl font-semibold text-blue-400">
+            Medvarsity Healthcare Assistant
+          </h1>
+        </div>
+
+        {/* Chat Messages (scrollable only here) */}
+        <div className="flex-1 p-6 overflow-y-auto space-y-4">
+          {chats
+            .find((c) => c.id === activeChat)
+            ?.messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`flex ${
+                  msg.sender === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                <div
+                  className={`px-4 py-3 rounded-2xl max-w-2xl ${
+                    msg.sender === "user"
+                      ? "bg-blue-500 text-white rounded-br-none"
+                      : "bg-gray-700 text-gray-200 rounded-bl-none"
+                  }`}
+                >
+                  {msg.sender === "bot" ? (
+                    <div
+                      className="prose prose-invert max-w-none prose-p:mb-3 prose-ul:list-disc prose-ul:pl-6 prose-li:mb-1 prose-strong:font-semibold prose-headings:mt-3 prose-headings:mb-2"
+                      dangerouslySetInnerHTML={{ __html: msg.text }}
+                    />
+                  ) : (
+                    msg.text
+                  )}
+                  <div className="text-xs opacity-60 mt-1">{msg.time}</div>
+                </div>
+              </div>
+            ))}
+
+          {isTyping && (
+            <div className="flex justify-start">
+              <div className="bg-gray-700 text-gray-300 px-4 py-2 rounded-2xl flex space-x-2">
+                <span className="animate-bounce">●</span>
+                <span className="animate-bounce delay-150">●</span>
+                <span className="animate-bounce delay-300">●</span>
+              </div>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* Input */}
+        <div className="border-t border-gray-700 bg-gray-800 p-4 flex items-center space-x-2">
+          <button className="p-2 hover:bg-gray-700 rounded-full">
+            <Mic size={20} />
+          </button>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about courses, duration, or fees..."
+            className="flex-1 bg-gray-900 text-white px-4 py-2 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            onClick={() => sendMessage()}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition"
+          >
+            <Send size={20} />
+          </button>
+        </div>
       </div>
     </div>
   );
 }
-
