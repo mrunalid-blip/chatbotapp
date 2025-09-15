@@ -49,7 +49,8 @@ export default function Chat() {
         question: message,
       });
 
-      addMessage(res.data.reply || "⚠️ No answer found.", "bot");
+      // ✅ Use `answer` (not `reply`) from backend
+      addMessage(res.data.answer || "⚠️ No answer found.", "bot");
     } catch (err) {
       console.error("Error:", err);
       addMessage("⚠️ Error connecting to backend.", "bot");
@@ -111,7 +112,7 @@ export default function Chat() {
           </h1>
         </div>
 
-        {/* Chat Messages (scrollable only here) */}
+        {/* Chat Messages */}
         <div className="flex-1 p-6 overflow-y-auto space-y-4">
           {chats
             .find((c) => c.id === activeChat)

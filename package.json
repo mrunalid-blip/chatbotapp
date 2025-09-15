@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "@google/genai": "^1.19.0"
+    "@google/genai": "^1.19.0",
+    "marked": "^16.3.0"
   }
 }
