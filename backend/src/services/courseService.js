@@ -1,75 +1,92 @@
 const fs = require("fs");
 const path = require("path");
 
-// Path to your JSON file
-const courseFile = path.join(
-  __dirname,
-  "../data/courses/fellowship-in-critical-care-medicine.json"
-);
+const coursesDir = path.join(__dirname, "../data/courses");
 
-// Load the course JSON
-let course = null;
+// Load all courses from the folder
+let courses = [];
 try {
-  const rawData = fs.readFileSync(courseFile, "utf-8");
-  course = JSON.parse(rawData);
-  console.log("✅ Course loaded:", course.course_name);
+  const files = fs.readdirSync(coursesDir);
+  courses = files
+    .filter((f) => f.endsWith(".json"))
+    .map((file) => {
+      const rawData = fs.readFileSync(path.join(coursesDir, file), "utf-8");
+      return JSON.parse(rawData);
+    });
+
+  console.log(`✅ Loaded ${courses.length} courses`);
 } catch (err) {
-  console.error("❌ Failed to load course:", err.message);
+  console.error("❌ Failed to load courses:", err.message);
 }
 
 /**
- * Search for an answer in the course JSON
+ * Find the best matching course based on the question
  * @param {string} question
  * @returns {string|null}
  */
 function findBestMatch(question) {
-  if (!course) return null;
+  if (!courses.length) return null;
 
   const q = question.toLowerCase();
 
-  // General info about the course
+  // Try to match course by name
+  const matchedCourse =
+    courses.find((c) => q.includes(c.course_name.toLowerCase())) || courses[0];
+
+  if (!matchedCourse) return null;
+
+  // General info
   if (
-    q.includes("fellowship in critical care medicine") ||
     q.includes("tell me about") ||
-    q.includes("course details")
+    q.includes("course details") ||
+    q.includes("overview")
   ) {
     return `
-      📘 <b>${course.course_name}</b><br/>
-      <b>Duration:</b> ${course.duration}<br/>
-      <b>Fees:</b> ${course.formatted_price}<br/><br/>
-      ${course.one_line_description}
+      <h2>📘 ${matchedCourse.course_name}</h2>
+      <p><b>Duration:</b> ${matchedCourse.duration}<br/>
+      <b>Fees:</b> ${matchedCourse.formatted_price}</p>
+      <p>${matchedCourse.one_line_description}</p>
     `;
   }
 
   // Duration
   if (q.includes("duration")) {
-    return `<b>${course.course_name}</b> has a duration of <b>${course.duration}</b>.`;
+    return `<p><b>${matchedCourse.course_name}</b> has a duration of <b>${matchedCourse.duration}</b>.</p>`;
   }
 
   // Fees
   if (q.includes("fee") || q.includes("cost") || q.includes("price")) {
-    return `<b>${course.course_name}</b> costs <b>${course.formatted_price}</b>.`;
+    return `<p><b>${matchedCourse.course_name}</b> costs <b>${matchedCourse.formatted_price}</b>.</p>`;
   }
 
   // Eligibility
   if (q.includes("eligibility")) {
-    if (course.eligibilities && course.eligibilities.length > 0) {
-      return `Eligibility for <b>${course.course_name}</b>: ${course.eligibilities
-        .map((e) => e.eligibility)
-        .join(", ")}`;
+    if (matchedCourse.eligibilities?.length > 0) {
+      return `
+        <h3>Eligibility for ${matchedCourse.course_name}</h3>
+        <ul>
+          ${matchedCourse.eligibilities
+            .map((e) => `<li>${e.eligibility}</li>`)
+            .join("")}
+        </ul>
+      `;
     }
-    return `Eligibility details are not available for <b>${course.course_name}</b>.`;
+    return `<p>Eligibility details are not available for <b>${matchedCourse.course_name}</b>.</p>`;
   }
 
   // Curriculum
   if (q.includes("curriculum") || q.includes("modules") || q.includes("syllabus")) {
-    if (course.curriculum && course.curriculum.length > 0) {
+    if (matchedCourse.curriculum?.length > 0) {
       return `
-        📚 <b>Curriculum for ${course.course_name}</b>:<br/>
-        ${course.curriculum.map((c) => `• ${c.module}: ${c.description}`).join("<br/>")}
+        <h3>📚 Curriculum for ${matchedCourse.course_name}</h3>
+        <ul>
+          ${matchedCourse.curriculum
+            .map((c) => `<li><b>${c.module}:</b> ${c.description}</li>`)
+            .join("")}
+        </ul>
       `;
     }
-    return `Curriculum details are not available for <b>${course.course_name}</b>.`;
+    return `<p>Curriculum details are not available for <b>${matchedCourse.course_name}</b>.</p>`;
   }
 
   return null; // fallback to Gemini

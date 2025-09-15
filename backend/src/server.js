@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 
 const app = express();
-app.use(cors());
+app.use(cors())
 app.use(express.json());
 
 // Import routes
@@ -20,6 +20,7 @@ app.use('/api/zoho-data', zohoRoutes);
 app.get('/', (req, res) => {
   res.send('🚀 Chatbot Backend running');
 });
+
 
 // Basic error handler
 app.use((err, req, res, next) => {

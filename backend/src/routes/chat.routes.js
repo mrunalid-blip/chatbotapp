@@ -1,25 +1,49 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const courseService = require('../services/courseService');
-const { askGemini } = require('../services/geminiClient');
+const { marked } = require("marked");
+const sanitizeHtml = require("sanitize-html");
+const courseService = require("../services/courseService"); // your course loader
+const { askGemini } = require("../services/geminiService"); // your LLM call
 
-// notice it’s just `/`, not `/api/chat`
-router.post('/', async (req, res) => {
+router.post("/", async (req, res) => {
   try {
     const { question } = req.body;
     console.log("💬 Incoming question:", question);
 
-    const match = courseService.findBestMatch(question);
-
-    if (match) {
-      return res.json({ reply: match });
+    if (!question) {
+      return res.status(400).json({ reply: "⚠️ No question provided." });
     }
 
-    const aiReply = await askGemini(question);
-    res.json({ reply: aiReply });
+    let rawReply;
+
+    // 1️⃣ Try to match a course
+    const course = courseService.findBestMatch(question);
+    if (course) {
+      rawReply = `
+# ${course.title}
+
+- **Duration:** ${course.duration}  
+- **Fees:** ${course.fees}  
+
+${course.description}
+      `;
+    } else {
+      // 2️⃣ Otherwise, fallback to Gemini
+      const geminiRes = await askGemini(question);
+      rawReply = geminiRes || "⚠️ I couldn't find an answer.";
+    }
+
+    // 3️⃣ Convert Markdown → HTML
+    let htmlReply = marked.parse(rawReply);
+    htmlReply = sanitizeHtml(htmlReply, {
+      allowedTags: sanitizeHtml.defaults.allowedTags.concat(["h1", "h2", "h3"]),
+      allowedAttributes: false,
+    });
+
+    res.json({ reply: htmlReply });
   } catch (err) {
     console.error("Chat error:", err);
-    res.status(500).json({ reply: "⚠️ Error connecting to backend." });
+    res.status(500).json({ reply: "⚠️ Server error while processing your request." });
   }
 });
 

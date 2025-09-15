@@ -131,7 +131,13 @@ export default function Chat() {
                 >
                   {msg.sender === "bot" ? (
                     <div
-                      className="prose prose-invert max-w-none prose-p:mb-3 prose-ul:list-disc prose-ul:pl-6 prose-li:mb-1 prose-strong:font-semibold prose-headings:mt-3 prose-headings:mb-2"
+                      className="prose prose-invert max-w-none
+                                 prose-p:mb-3
+                                 prose-ul:list-disc prose-ul:pl-6
+                                 prose-ol:list-decimal prose-ol:pl-6
+                                 prose-li:mb-1
+                                 prose-strong:font-semibold
+                                 prose-headings:mt-3 prose-headings:mb-2"
                       dangerouslySetInnerHTML={{ __html: msg.text }}
                     />
                   ) : (
