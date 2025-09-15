@@ -1,112 +1,159 @@
+
 const fs = require("fs");
 const path = require("path");
-const stringSimilarity = require("string-similarity");
 
-const courseFile = path.join(__dirname, "../data/courses/futurecources.json");
+const jsonPath = path.join(__dirname, "../data/courses/futurecources.json");
+const csvPath = path.join(__dirname, "../data/courses/course_names.csv");
 
 let courses = [];
-try {
-  const rawData = fs.readFileSync(courseFile, "utf-8");
-  const parsed = JSON.parse(rawData);
+let courseNames = [];
 
-  // ✅ Merge all possible arrays
-  courses = [
-    ...(parsed.featured_course || []),
-    ...(parsed.all_courses || []),
-    ...(parsed.courses || []),
-    ...(parsed.categories || []).flatMap(cat => cat.courses || []),
-  ];
-
-  console.log("✅ Loaded", courses.length, "courses");
-} catch (err) {
-  console.error("❌ Failed to load courses:", err.message);
+function safeLoadJson() {
+  try {
+    const raw = fs.readFileSync(jsonPath, "utf-8");
+    const parsed = JSON.parse(raw);
+    courses = [
+      ...(parsed.featured_course || []),
+      ...(parsed.trending_courses || []),
+      ...(parsed.all_courses || []),
+      ...(parsed.courses || []),
+      ...(parsed.categories || []).flatMap((cat) => cat.courses || []),
+    ].filter(Boolean);
+    console.log("✅ Loaded", courses.length, "courses (JSON)");
+  } catch (err) {
+    console.error("❌ Failed to load courses JSON:", err.message);
+    courses = [];
+  }
 }
 
-// Utility: strip HTML from LMS descriptions
-function stripHTML(html) {
-  if (!html) return "";
-  return html.replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+function safeLoadCsv() {
+  try {
+    if (!fs.existsSync(csvPath)) {
+      console.warn("⚠️ CSV not found:", csvPath);
+      courseNames = courses
+        .map((c) => (c.course_name || c.name || "").trim())
+        .filter(Boolean);
+      return;
+    }
+    const raw = fs.readFileSync(csvPath, "utf-8");
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (lines[0]?.toLowerCase().startsWith("course_name")) lines.shift();
+    courseNames = lines
+      .map((l) => {
+        let v = l;
+        if (v.startsWith('"') && v.endsWith('"'))
+          v = v.slice(1, -1).replace(/""/g, '"');
+        return v.trim();
+      })
+      .filter(Boolean);
+    console.log("✅ Loaded", courseNames.length, "course names (CSV)");
+  } catch (err) {
+    console.error("❌ Failed to load course_names CSV:", err.message);
+    courseNames = courses
+      .map((c) => (c.course_name || c.name || "").trim())
+      .filter(Boolean);
+  }
 }
 
-// ✅ Format course details into clean HTML
+safeLoadJson();
+safeLoadCsv();
+
+// 🔎 Get course by exact name
+function getCourseByName(name) {
+  if (!name) return null;
+  const n = name.trim().toLowerCase();
+  return (
+    courses.find(
+      (c) => (c.course_name || c.name || "").trim().toLowerCase() === n
+    ) || null
+  );
+}
+
+// 🔎 Search multiple courses by keyword
+function searchCoursesByKeywords(query) {
+  if (!query) return [];
+  const q = query.toLowerCase();
+  return courses.filter((c) =>
+    (c.course_name || "").toLowerCase().includes(q)
+  );
+}
+
+// 📝 Full details formatter
 function formatCourseDetails(course) {
-  if (!course) return "<p>No course details found.</p>";
+  if (!course) return "<p>Course details not found.</p>";
 
-  const duration = course.duration?.trim() || "Not specified";
+  const title = course.course_name || course.name || "Unknown Course";
+  const duration =
+    course.duration ||
+    course.duration_in_months ||
+    course.duration_text ||
+    "Not specified";
 
   let fees = "Not specified";
-  if (course.formatted_price) {
-    fees = course.formatted_price;
-  } else if (course.prices?.length > 0) {
+  if (course.formatted_price) fees = course.formatted_price;
+  else if (course.prices?.length > 0) {
     fees =
       course.prices[0].formatted_price ||
       `${course.prices[0].currency} ${course.prices[0].price}`;
+  } else if (course.price) {
+    fees = course.price;
   }
 
-  const description = stripHTML(
-    course.one_line_description || course.description || "No description available."
-  );
+  const desc =
+    (course.one_line_description ||
+      course.description ||
+      course.details ||
+      "")
+      .toString()
+      .replace(/<[^>]+>/g, "")
+      .trim() || "No description available.";
 
   return `
     <div>
-      <h3><strong>${course.course_name}</strong></h3>
+      <h3><strong>${title}</strong></h3>
       <p><strong>Duration:</strong> ${duration}</p>
       <p><strong>Fees:</strong> ${fees}</p>
-      <p>${description}</p>
+      <p>${desc}</p>
     </div>
   `;
 }
 
-// ✅ Find the best-matching course
-function findBestMatch(question) {
-  if (!courses.length) return "COURSE_NOT_FOUND";
+// 📝 Summary formatter (fees + duration only)
+function formatCourseSummaries(courseList) {
+  if (!courseList.length) return "<p>No matching courses found.</p>";
 
-  const q = question.toLowerCase();
-  const courseNames = courses.map((c) => (c.course_name || "").toLowerCase());
+  let html = "<div><h3><strong>Matching Courses</strong></h3><ul>";
+  for (const c of courseList) {
+    const title = c.course_name || c.name || "Unknown Course";
+    const duration =
+      c.duration || c.duration_in_months || c.duration_text || "Not specified";
 
-  // 1️⃣ Try string-similarity first
-  const bestMatch = stringSimilarity.findBestMatch(q, courseNames);
-  let course = null;
-
-  if (bestMatch.bestMatch.rating >= 0.25) {
-    course = courses[bestMatch.bestMatchIndex];
-  }
-
-  // 2️⃣ If no strong match, try keyword includes
-  if (!course) {
-    const keywords = q.split(/\s+/).filter((w) => w.length > 2);
-    course = courses.find((c) =>
-      keywords.every((kw) => (c.course_name || "").toLowerCase().includes(kw))
-    );
-    if (!course) {
-      course = courses.find((c) =>
-        keywords.some((kw) => (c.course_name || "").toLowerCase().includes(kw))
-      );
+    let fees = "Not specified";
+    if (c.formatted_price) fees = c.formatted_price;
+    else if (c.prices?.length > 0) {
+      fees =
+        c.prices[0].formatted_price ||
+        `${c.prices[0].currency} ${c.prices[0].price}`;
+    } else if (c.price) {
+      fees = c.price;
     }
+
+    html += `<li><strong>${title}</strong> — Duration: ${duration}, Fees: ${fees}</li>`;
   }
+  html += "</ul></div>";
 
-  if (!course) return "COURSE_NOT_FOUND";
-
-  // ✅ Special cases (duration/fees only)
-  if (q.includes("duration")) {
-    return `<p><strong>${course.course_name}</strong> has a duration of <strong>${
-      course.duration || "Not specified"
-    }</strong>.</p>`;
-  }
-
-  if (q.includes("fee") || q.includes("cost") || q.includes("price")) {
-    const fees =
-      course.formatted_price ||
-      (course.prices && course.prices[0]?.formatted_price) ||
-      "Not specified";
-    return `<p><strong>${course.course_name}</strong> costs <strong>${fees}</strong>.</p>`;
-  }
-
-  // ✅ Full course details
-  return formatCourseDetails(course);
+  return html;
 }
 
 module.exports = {
-  findBestMatch,
-  COURSE_NOT_FOUND: "COURSE_NOT_FOUND",
+  courses,
+  courseNames,
+  getCourseByName,
+  searchCoursesByKeywords,
+  formatCourseDetails,
+  formatCourseSummaries,
+  reload: () => {
+    safeLoadJson();
+    safeLoadCsv();
+  },
 };
