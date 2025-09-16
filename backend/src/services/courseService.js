@@ -69,16 +69,21 @@ function getCourseByName(name) {
   );
 }
 
-// 🔎 Search multiple courses by keyword
+// 🔎 Search multiple courses by keywords (supports partial matches)
 function searchCoursesByKeywords(query) {
   if (!query) return [];
   const q = query.toLowerCase();
-  return courses.filter((c) =>
-    (c.course_name || "").toLowerCase().includes(q)
-  );
+
+  // Split query into words (tokens)
+  const tokens = q.split(/\s+/).filter(Boolean);
+
+  return courses.filter((c) => {
+    const name = (c.course_name || c.name || "").toLowerCase();
+    return tokens.some((t) => name.includes(t));
+  });
 }
 
-// 📝 Full details formatter (shortened description)
+// 📝 Full details formatter (short description)
 function formatCourseDetails(course) {
   if (!course) return "<p>Course details not found.</p>";
 
@@ -106,9 +111,9 @@ function formatCourseDetails(course) {
       "")
       .toString()
       .replace(/<[^>]+>/g, "")
-      .trim() || "No description available.";
+      .trim();
 
-  // ✂️ Limit description to ~350 chars (~3–4 lines)
+  // shorten description to ~3-4 lines
   if (desc.length > 350) {
     desc = desc.substring(0, 350).trim() + "...";
   }

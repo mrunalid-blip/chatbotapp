@@ -1,4 +1,3 @@
-// backend/src/services/geminiService.js
 const axios = require("axios");
 const courseService = require("./courseService");
 const stringSimilarity = require("string-similarity");
@@ -48,8 +47,7 @@ Return ONLY that single line. Do not explain.
       headers: { "Content-Type": "application/json" },
     });
 
-    const raw =
-      resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const raw = resp.data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
     const firstLine = raw.split(/\r?\n/)[0].trim();
 
     if (/^NO_MATCH$/i.test(firstLine)) return null;
@@ -64,20 +62,20 @@ Return ONLY that single line. Do not explain.
     );
     if (ci) return ci;
 
-    // Fuzzy match fallback
+    // Fuzzy match fallback (⚠️ stricter threshold now)
     const best = stringSimilarity.findBestMatch(
       firstLine.toLowerCase(),
       courseService.courseNames.map((n) => n.toLowerCase())
     ).bestMatch;
 
-    if (best.rating >= 0.3) {
+    if (best.rating >= 0.6) { // 🔑 Only accept strong matches
       const idx = courseService.courseNames
         .map((n) => n.toLowerCase())
         .indexOf(best.target);
       return courseService.courseNames[idx] || null;
     }
 
-    return null;
+    return null; // ❌ Reject weak / wrong matches
   } catch (err) {
     console.error(
       "geminiService.findBestCourseName error:",
