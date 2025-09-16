@@ -1,4 +1,4 @@
-
+// backend/src/services/courseService.js
 const fs = require("fs");
 const path = require("path");
 
@@ -78,7 +78,7 @@ function searchCoursesByKeywords(query) {
   );
 }
 
-// 📝 Full details formatter
+// 📝 Full details formatter (shortened description)
 function formatCourseDetails(course) {
   if (!course) return "<p>Course details not found.</p>";
 
@@ -99,7 +99,7 @@ function formatCourseDetails(course) {
     fees = course.price;
   }
 
-  const desc =
+  let desc =
     (course.one_line_description ||
       course.description ||
       course.details ||
@@ -107,6 +107,11 @@ function formatCourseDetails(course) {
       .toString()
       .replace(/<[^>]+>/g, "")
       .trim() || "No description available.";
+
+  // ✂️ Limit description to ~350 chars (~3–4 lines)
+  if (desc.length > 350) {
+    desc = desc.substring(0, 350).trim() + "...";
+  }
 
   return `
     <div>

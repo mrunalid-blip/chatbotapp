@@ -10,36 +10,39 @@ const GEMINI_URL_BASE =
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
 function buildUrlWithKey() {
-  const key = GEMINI_API_KEY;
-  if (!key) throw new Error("GEMINI_API_KEY missing in env");
-  return `${GEMINI_URL_BASE}?key=${key}`;
+  if (!GEMINI_API_KEY) throw new Error("❌ GEMINI_API_KEY missing in .env");
+  return `${GEMINI_URL_BASE}?key=${GEMINI_API_KEY}`;
 }
 
-// 🔎 Ask Gemini to choose the best course name from CSV list
+/**
+ * 🔎 Ask Gemini to pick the best matching course name
+ * Returns exact course title (from CSV list) or null
+ */
 async function findBestCourseName(question) {
-  const names = courseService.courseNames.slice(0, 800); // limit
+  const names = courseService.courseNames.slice(0, 800); // limit for prompt safety
   if (!names.length) return null;
 
   const namesText = names.join("\n");
 
   const prompt = `
-You are a precise assistant. Given the following list of available course titles (one per line), and a user's question, respond with exactly ONE of the following on the first line only:
-- The exact matching course title from the list (case-sensitive, exactly as in the list).
-- Or the single token NO_MATCH if none of the listed courses are relevant.
+You are a precise assistant. 
+Given the following list of available course titles (one per line), and a user's question:
 
 Available course titles:
 ${namesText}
 
 User question: "${question}"
 
-Return ONLY the exact course title or NO_MATCH. No extra text.
+Respond with EXACTLY ONE of:
+- The exact course title (must match one from the list, case-sensitive)
+- Or the word NO_MATCH if none are relevant.
+
+Return ONLY that single line. Do not explain.
 `;
 
   try {
     const url = buildUrlWithKey();
-    const payload = {
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    };
+    const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
 
     const resp = await axios.post(url, payload, {
       headers: { "Content-Type": "application/json" },
@@ -51,18 +54,22 @@ Return ONLY the exact course title or NO_MATCH. No extra text.
 
     if (/^NO_MATCH$/i.test(firstLine)) return null;
 
+    // Exact match
     const exact = courseService.courseNames.find((n) => n === firstLine);
     if (exact) return exact;
 
+    // Case-insensitive match
     const ci = courseService.courseNames.find(
       (n) => n.toLowerCase() === firstLine.toLowerCase()
     );
     if (ci) return ci;
 
+    // Fuzzy match fallback
     const best = stringSimilarity.findBestMatch(
       firstLine.toLowerCase(),
       courseService.courseNames.map((n) => n.toLowerCase())
     ).bestMatch;
+
     if (best.rating >= 0.3) {
       const idx = courseService.courseNames
         .map((n) => n.toLowerCase())
@@ -80,32 +87,40 @@ Return ONLY the exact course title or NO_MATCH. No extra text.
   }
 }
 
-// 🌐 General Gemini fallback (non-course queries)
+/**
+ * 🌐 General Gemini fallback (for non-course queries)
+ * Returns plain HTML (never wrapped in ```html fences)
+ */
 async function askGeminiGeneral(question) {
   try {
     const url = buildUrlWithKey();
+
     const prompt = `
 You are Medvarsity assistant.
-Answer the user's question using simple HTML tags (<p>, <ul>, <li>, <strong>).
+Answer the user's question using only simple HTML tags (<p>, <ul>, <li>, <strong>).
+
 Important:
-- DO NOT wrap the answer inside code blocks or backticks.
-- Just return raw HTML only.
+- DO NOT use backticks.
+- DO NOT wrap your answer in code fences.
+- Just return plain HTML tags.
+
 User question: "${question}"
 `;
 
-    const payload = {
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-    };
+    const payload = { contents: [{ role: "user", parts: [{ text: prompt }] }] };
 
     const resp = await axios.post(url, payload, {
       headers: { "Content-Type": "application/json" },
     });
 
-    const raw =
+    let raw =
       resp.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "⚠️ Gemini did not return text.";
+      "<p>⚠️ Gemini did not return text.</p>";
 
-    return raw.trim();
+    // Cleanup: remove accidental ```html fences
+    raw = raw.replace(/```html|```/gi, "").trim();
+
+    return raw;
   } catch (err) {
     console.error(
       "geminiService.askGeminiGeneral error:",
